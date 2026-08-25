@@ -5,6 +5,9 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 
 export class InfrastructureStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -79,15 +82,74 @@ export class InfrastructureStack extends cdk.Stack {
       },
     });
 
-    // ※ ルーティング定義（スケルトン）
-    // CDKの仕様上、addRoutesにはLambdaなどの統合先(Integration)が必須です。
-    // 今回はStep2.1の制約に基づき、次ステップで有効化できるようコメントアウトで設計意図を残しています。
-    /*
-    httpApi.addRoutes({ path: '/events', methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST], integration: dummyLambdaIntegration });
-    httpApi.addRoutes({ path: '/events/{eventId}', methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE], integration: dummyLambdaIntegration });
-    httpApi.addRoutes({ path: '/venues', methods: [apigwv2.HttpMethod.GET], integration: dummyLambdaIntegration });
-    httpApi.addRoutes({ path: '/venues/{venueId}/events', methods: [apigwv2.HttpMethod.GET], integration: dummyLambdaIntegration });
-    httpApi.addRoutes({ path: '/uploads/presigned-url', methods: [apigwv2.HttpMethod.POST], integration: dummyLambdaIntegration });
-    */
+    // 5. Lambda関数の定義
+    const eventsLambda = new NodejsFunction(this, 'EventsLambda', {
+      entry: 'src/handlers/events.ts',
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+    });
+
+    const venuesLambda = new NodejsFunction(this, 'VenuesLambda', {
+      entry: 'src/handlers/venues.ts',
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+    });
+
+    const uploadsLambda = new NodejsFunction(this, 'UploadsLambda', {
+      entry: 'src/handlers/uploads.ts',
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      environment: {
+        BUCKET_NAME: bucket.bucketName,
+      },
+    });
+
+    // 6. 最小権限の付与 (Least Privilege)
+    table.grantReadWriteData(eventsLambda);
+    table.grantReadData(venuesLambda);
+    bucket.grantPut(uploadsLambda);
+
+    // 7. API Gateway へのルーティング統合
+    const eventsIntegration = new HttpLambdaIntegration('EventsIntegration', eventsLambda);
+    const venuesIntegration = new HttpLambdaIntegration('VenuesIntegration', venuesLambda);
+    const uploadsIntegration = new HttpLambdaIntegration('UploadsIntegration', uploadsLambda);
+
+    // 8. ルーティング定義 (Authorizerをアタッチして認証を必須化)
+    httpApi.addRoutes({
+      path: '/events',
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: eventsIntegration,
+      authorizer, 
+    });
+    httpApi.addRoutes({
+      path: '/events/{eventId}',
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE],
+      integration: eventsIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: '/venues',
+      methods: [apigwv2.HttpMethod.GET],
+      integration: venuesIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: '/venues/{venueId}/events',
+      methods: [apigwv2.HttpMethod.GET],
+      integration: venuesIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: '/uploads/presigned-url',
+      methods: [apigwv2.HttpMethod.POST],
+      integration: uploadsIntegration,
+      authorizer,
+    });
   }
 }
