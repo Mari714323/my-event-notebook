@@ -1,19 +1,52 @@
-import React from 'react';
-import { MOCK_TRIPS } from '../../../mocks/mockData';
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { Trip } from '../../../types';
 import { TripDetailLayout } from '../../../components/trips/TripDetailLayout';
+import { fetchTrip } from '../../../lib/apiClient';
+import { Loader2 } from 'lucide-react';
 
-// ★最新のNext.jsに合わせて async を追加し、params を Promise 型に変更しました
-export default async function TripDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TripDetailPage() {
+  // App Routerのクライアントコンポーネントでのパラメータ取得
+  const params = useParams();
+  const id = params.id as string;
   
-  // ★ここでURLのパラメータ（id）を取り出します
-  const resolvedParams = await params;
-  
-  const trip = MOCK_TRIPS.find(t => t.id === resolvedParams.id);
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!trip) {
+  useEffect(() => {
+    if (!id) return;
+    
+    const loadTrip = async () => {
+      try {
+        setIsLoading(true);
+        const data = await fetchTrip(id);
+        setTrip(data);
+      } catch (err) {
+        setError('遠征データの取得に失敗しました。');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadTrip();
+  }, [id]);
+
+  if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center text-gray-500">
-        遠征データが見つかりませんでした。
+      <div className="flex h-screen flex-col items-center justify-center text-blue-500 bg-gray-50">
+        <Loader2 className="w-8 h-8 animate-spin mb-4" />
+        <p className="text-sm font-bold text-gray-500">読み込み中...</p>
+      </div>
+    );
+  }
+
+  if (error || !trip) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center text-gray-500 bg-gray-50 gap-4">
+        <p className="font-bold">{error || '遠征データが見つかりませんでした'}</p>
       </div>
     );
   }
