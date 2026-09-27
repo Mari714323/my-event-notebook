@@ -2,15 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // ←追加
 import { Trip } from '../types';
 import { Calendar, MapPin, Plus, LogOut, Loader2 } from 'lucide-react';
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-
-// APIクライアントをインポート
-import { fetchTrips } from '../lib/apiClient';
+import { fetchTrips, createTrip } from '../lib/apiClient';
+import { CreateTripModal } from '../components/trips/CreateTripModal';
 
 export default function HomePage() {
+  const router = useRouter();
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('past');
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,6 +34,18 @@ export default function HomePage() {
 
     loadTrips();
   }, []);
+
+  //モーダルからデータを受け取ってAPI送信し、詳細画面へ遷移する
+  const handleCreateSubmit = async (tripData: { title: string; venueName: string; startDate: string; endDate: string }) => {
+    // APIを呼び出して新規作成（エラーはモーダル内でキャッチ・表示されます）
+    const newTrip = await createTrip(tripData);
+    
+    // 成功したらモーダルを閉じる
+    setIsModalOpen(false);
+    
+    // 作成された遠征の詳細画面（/trips/[id]）へ自動遷移
+    router.push(`/trips/${newTrip.id}`);
+  };
 
   // ステータスに応じてデータをフィルタリング
   const upcomingTrips = trips.filter(trip => trip.status === 'planning' || trip.status === 'ongoing');
@@ -105,12 +119,21 @@ export default function HomePage() {
             )}
           </main>
 
+          {/* ▼ onClickを追加 */}
           <button
+            onClick={() => setIsModalOpen(true)}
             className="fixed bottom-20 right-5 md:right-8 lg:right-[calc(50%-480px)] w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all z-40"
             aria-label="新しい遠征を追加"
           >
             <Plus className="w-7 h-7" />
           </button>
+
+          {/* ▼ 閉じタグの直前に追加: モーダルコンポーネントの呼び出し */}
+          <CreateTripModal
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            onSubmit={handleCreateSubmit}
+          />
         </div>
       )}
     </Authenticator>
