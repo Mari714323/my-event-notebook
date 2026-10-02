@@ -87,15 +87,10 @@ export async function createTrip(
   // フォームからの入力値と、自動設定する初期値をマージしてペイロードを作成
   const payload = {
     ...tripData,
-    primaryVenueId: `venue-${Date.now()}`, // 今回は会場名からの簡易的な仮ID生成（後でマスタと紐づけるなど拡張可能）
+    primaryVenueID: `venue-${Date.now()}`,
     status: 'planning',
     timeline: [],
-    // 持ち物テンプレートを展開し、一意のIDを付与してセット
-    checklist: DEFAULT_PACKING_LIST.map(item => ({
-      id: `pack-${crypto.randomUUID()}`,
-      ...item
-    })),
-    // DynamoDBの仕様に合わせて必要な初期値があれば追加
+    checklist: [],
     hasHotel: false,
     hasTransport: false,
   };
@@ -113,6 +108,5 @@ export async function createTrip(
     throw new Error(`遠征の作成に失敗しました: ${response.status}`);
   }
 
-  const data = await response.json();
-  return data;
+  return response.json();
 }
