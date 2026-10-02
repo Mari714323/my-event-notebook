@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { Trip, CheckItem, PackingCategory } from '../../types';
-import { CheckSquare, Square, AlertCircle } from 'lucide-react';
+import { CheckSquare, Square, AlertCircle, Plus, Loader2 } from 'lucide-react'; // Plus, Loader2追加
+import { updateTrip } from '../../lib/apiClient'; // 追加
 
 // カテゴリ表示用の日本語ラベル
 const categoryLabels: Record<PackingCategory, string> = {
@@ -15,11 +16,60 @@ const categoryLabels: Record<PackingCategory, string> = {
 
 export const PackingTab = ({ trip }: { trip: Trip }) => {
   const [items, setItems] = useState<CheckItem[]>(trip.packingList || []);
+  
+  // 追加: 新規追加用のState
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemCategory, setNewItemCategory] = useState<PackingCategory>('other');
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  const toggleCheck = (id: string) => {
-    setItems(items.map(item => 
+  // 変更: API通信を含めたトグル処理（即時反映）
+  const toggleCheck = async (id: string) => {
+    // オプティミスティックUI（先に画面だけチェック状態を更新してサクサク感を持たせる）
+    const newItems = items.map(item =>
       item.id === id ? { ...item, isChecked: !item.isChecked } : item
-    ));
+    );
+    setItems(newItems);
+
+    try {
+      // バックエンドに保存（PUTで全体を上書き）
+      const updatedTrip = { ...trip, packingList: newItems };
+      await updateTrip(trip.id, updatedTrip);
+    } catch (error) {
+      console.error(error);
+      alert('状態の保存に失敗しました。');
+      // エラー時は元の状態に戻す
+      setItems(items);
+    }
+  };
+
+  // 追加: 新規アイテムの追加処理
+  const handleAddItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemName.trim()) return;
+
+    setIsUpdating(true);
+    const newItem: CheckItem = {
+      id: `pack-${Date.now()}`, // 簡易的な一意ID
+      category: newItemCategory,
+      name: newItemName.trim(),
+      isRequired: false,
+      isChecked: false,
+    };
+
+    const newItems = [...items, newItem];
+    setItems(newItems); // 画面を更新
+
+    try {
+      const updatedTrip = { ...trip, packingList: newItems };
+      await updateTrip(trip.id, updatedTrip);
+      setNewItemName(''); // 成功したらフォームをリセット
+    } catch (error) {
+      console.error(error);
+      alert('アイテムの追加に失敗しました。');
+      setItems(items); // エラー時は追加前の状態に戻す
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   // カテゴリごとにアイテムをグループ化
@@ -107,6 +157,43 @@ export const PackingTab = ({ trip }: { trip: Trip }) => {
             </div>
           );
         })}
+      </div>
+
+      {/* 追加: 新規アイテム追加フォーム */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mt-6">
+        <h3 className="font-bold text-gray-800 text-sm mb-3">持ち物を追加</h3>
+        <form onSubmit={handleAddItem} className="space-y-3">
+          <div className="flex gap-2">
+            <select
+              value={newItemCategory}
+              onChange={(e) => setNewItemCategory(e.target.value as PackingCategory)}
+              className="border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {Object.entries(categoryLabels).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={newItemName}
+              onChange={(e) => setNewItemName(e.target.value)}
+              placeholder="アイテム名"
+              className="flex-1 border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isUpdating || !newItemName.trim()}
+            className="w-full bg-blue-50 text-blue-600 font-bold py-2 rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors disabled:opacity-50"
+          >
+            {isUpdating ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> 追加中...</>
+            ) : (
+              <><Plus className="w-4 h-4" /> 追加する</>
+            )}
+          </button>
+        </form>
       </div>
     </div>
   );
