@@ -110,3 +110,57 @@ export async function createTrip(
 
   return response.json();
 }
+
+export async function updateTrip(id: string, tripData: Trip): Promise <Trip> {
+  const session = await fetchAuthSession();
+  const token = session.tokens?.idToken?.toString();
+
+  if (!token) {
+    throw new Error('認証トークンが取得できませんでした');
+  }
+  if (!API_BASE_URL) {
+    throw new Error('APIエンドポイントが設定されていません');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/events/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(tripData), // tripDataを丸ごと送信
+  });
+
+  if (!response.ok) {
+    throw new Error(`遠征の更新に失敗しました: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteTrip(id: string): Promise <Trip> {
+  const session = await fetchAuthSession();
+  const token = session.tokens?.idToken?.toString();
+
+  if (!token) {
+    throw new Error('認証トークンが取得できませんでした');
+  }
+
+  if (!API_BASE_URL) {
+    throw new Error('APIエンドポイントが設定されていません');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/events/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`遠征の削除に失敗しました: ${response.status}`);
+  }
+
+  return response.json();
+}
