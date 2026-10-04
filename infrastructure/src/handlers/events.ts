@@ -1,12 +1,18 @@
 import { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+// S3用のモジュールを追加
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 
-// DynamoDBクライアントの初期化（Lambdaの実行環境外で初期化することで、次回以降の実行を高速化します）
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 const tableName = process.env.TABLE_NAME!;
+
+// S3クライアントとバケット名を初期化
+const s3Client = new S3Client({});
+const bucketName = process.env.BUCKET_NAME || 'my-expedition-images--ap-northeast-1';
 
 export const handler = async (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise<APIGatewayProxyResultV2> => {
   console.log('Event:', JSON.stringify(event, null, 2));
@@ -112,6 +118,31 @@ export const handler = async (event: APIGatewayProxyEventV2WithJWTAuthorizer): P
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item)
+      };
+    }
+    // 6. 画像アップロード用Presigned URL発行 (POST /events/{eventId}/upload-url)
+    if (routeKey === 'POST /events/{eventId}/upload-url') {
+      const eventId = event.pathParameters?.eventId;
+      const body = JSON.parse(event.body || '{}');
+      const contentType = body.contentType || 'image/jpeg';
+      const fileExtension = contentType.split('/')[1] || 'jpg';
+      
+      // S3オブジェクトキーの生成 (users/{userId}/trips/{eventId}/seat_{randomUUID}.{ext})
+      const objectKey = `users/${userId}/trips/${eventId}/seat_${randomUUID()}.${fileExtension}`;
+      
+      const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: objectKey,
+        ContentType: contentType,
+      });
+
+      // 有効期限300秒でURL発行
+      const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadUrl, objectKey })
       };
     }
 
