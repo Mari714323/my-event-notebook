@@ -1,23 +1,25 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation'; // 追加
-import { MapPin, Calendar, Clock, Ticket, Luggage, Trash2 } from 'lucide-react'; // Trash2 を追加
-import { Trip } from '../../types';
+import { useRouter } from 'next/navigation'; 
+import { MapPin, Calendar, Clock, Ticket, Luggage, Trash2, Loader2, ChevronDown } from 'lucide-react'; 
+import { Trip, TripStatus } from '../../types'; 
 import { TimelineTab } from './TimelineTab';
 import { PackingTab } from './PackingTab';
 import { SeatArchiveTab } from './SeatArchiveTab';
-import { deleteTrip } from '../../lib/apiClient'; // 追加
+import { deleteTrip, updateTrip } from '../../lib/apiClient'; 
 
 type TabType = 'timeline' | 'packing' | 'seat';
 
 export const TripDetailLayout = ({ trip }: { trip: Trip }) => {
-  const router = useRouter(); // 追加
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('timeline');
-  const [isDeleting, setIsDeleting] = useState(false); // 追加
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<TripStatus>(trip.status);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  // 追加: 削除処理ハンドラー
-  const handleDelete = async () => {
+
+   const handleDelete = async () => {
     // ネイティブの確認ダイアログでワンクッション置く
     const confirmed = window.confirm('この遠征記録を削除しますか？\n※この操作は取り消せません。');
     if (!confirmed) return;
@@ -25,7 +27,6 @@ export const TripDetailLayout = ({ trip }: { trip: Trip }) => {
     try {
       setIsDeleting(true);
       await deleteTrip(trip.id);
-      // 削除成功後はホーム画面へ戻る
       router.push('/');
     } catch (error) {
       console.error(error);
@@ -34,12 +35,54 @@ export const TripDetailLayout = ({ trip }: { trip: Trip }) => {
     }
   };
 
+  const handleStatusChange = async (newStatus: TripStatus) => {
+    setIsUpdatingStatus(true);
+    setCurrentStatus(newStatus);
+    
+    try {
+      const updatedTrip = { ...trip, status: newStatus };
+      await updateTrip(trip.id, updatedTrip);
+    } catch (error) {
+      console.error(error);
+      alert('ステータスの更新に失敗しました。');
+      setCurrentStatus(trip.status);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col max-w-5xl mx-auto w-full bg-white shadow-sm pb-16">
       {/* ヘッダー部分 */}
       <header className="bg-white px-4 py-6 shadow-sm z-10 relative">
-        <div className="flex justify-between items-start mb-2">
-          <h1 className="text-xl font-bold text-gray-900 pr-10">{trip.title}</h1>
+        <div className="flex justify-between items-start mb-3">
+          <div className="flex flex-col items-start gap-2 pr-10">
+            <h1 className="text-xl font-bold text-gray-900 leading-tight">{trip.title}</h1>
+            
+            {/* ★追加: ステータス切り替えUI（セレクトボックス方式） */}
+            <div className="relative inline-block">
+              <select
+                value={currentStatus}
+                onChange={(e) => handleStatusChange(e.target.value as TripStatus)}
+                disabled={isUpdatingStatus}
+                className={`appearance-none text-xs font-bold pl-3 pr-8 py-1.5 rounded-full border outline-none cursor-pointer transition-colors disabled:opacity-50
+                  ${currentStatus === 'completed' ? 'bg-gray-100 border-gray-300 text-gray-600' : 
+                    currentStatus === 'ongoing' ? 'bg-blue-50 border-blue-200 text-blue-700' : 
+                    'bg-green-50 border-green-200 text-green-700'}`}
+              >
+                <option value="planning">● 予定</option>
+                <option value="ongoing">● 進行中</option>
+                <option value="completed">● 参戦済み</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                {isUpdatingStatus ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <ChevronDown className="w-3 h-3" />
+                )}
+              </div>
+            </div>
+          </div>
           
           {/* 追加: 削除ボタン */}
           <button
